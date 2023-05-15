@@ -1,4 +1,4 @@
-####Terraform AWS VPC, Subnets, NAT, EC2 Instances, and Jenkins Configuration
+# Terraform AWS VPC, Subnets, NAT, EC2 Instances, and Jenkins Configuration
 This Terraform configuration creates an AWS VPC with public and private subnets, a NAT gateway, an Internet gateway, a bastion host in the public subnet, an EC2 instance running Amazon Linux 2 in the private subnet, and a Jenkins server running on Amazon Linux 2 in the public subnet.
 
 ```hcl
