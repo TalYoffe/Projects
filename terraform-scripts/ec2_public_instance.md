@@ -10,10 +10,20 @@ provider "aws" {
 }
 
 # This resource block creates an AWS key pair.
-# The public key is imported from a file in your local directory.
+resource "tls_private_key" "this" {
+  algorithm     = "RSA"
+  rsa_bits      = 4096
+}
+
 resource "aws_key_pair" "deployer" {
-  key_name   = "deployer_key"
-  public_key = file("~/.ssh/id_rsa.pub") # Replace with your public key file path
+  key_name      = "my-key"
+  public_key    = tls_private_key.this.public_key_openssh
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "${tls_private_key.this.private_key_pem}" > my-key.pem
+    EOT
+  }
 }
 
 # This resource block creates a security group that allows inbound SSH traffic from 1.1.1.1.
