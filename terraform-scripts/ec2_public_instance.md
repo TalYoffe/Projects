@@ -10,7 +10,10 @@ provider "aws" {
 }
 
 # This resource block creates an AWS key pair.
+<<<<<<< HEAD
 
+=======
+>>>>>>> abc9ad882540857c91637e5c9b5d21b33e51bc31
 resource "tls_private_key" "this" {
   algorithm     = "RSA"
   rsa_bits      = 4096
