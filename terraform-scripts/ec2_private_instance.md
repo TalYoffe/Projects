@@ -124,7 +124,7 @@ resource "aws_security_group" "jenkins" {
 
 # Create the bastion host in the public subnet
 resource "aws_instance" "bastion" {
-  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (HVM), SSD Volume Type
+  ami           = "ami-01c94064639c71719" # Amazon Linux 2 AMI (HVM), SSD Volume Type
   instance_type = "t3.micro"
   key_name      = aws_key_pair.deployer.key_name
   subnet_id     = aws_subnet.public.id
@@ -140,7 +140,7 @@ resource "aws_instance" "bastion" {
 
 # Create the Jenkins server in the public subnet
 resource "aws_instance" "jenkins" {
-  ami           = "ami-0c55b159cbfafe1f0" # Amazon Linux 2 AMI (HVM), SSD Volume Type
+  ami           = "ami-01c94064639c71719" # Amazon Linux 2 AMI (HVM), SSD Volume Type
   instance_type = "t3.micro"
   key_name      = aws_key_pair.deployer.key_name
   subnet_id     = aws_subnet.public.id
