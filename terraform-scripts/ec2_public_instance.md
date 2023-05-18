@@ -6,7 +6,7 @@ This configuration creates an AWS EC2 instance, a key pair, and a security group
 # Provider block specifies to use AWS as the cloud provider.
 # The region is set to us-west-1.
 provider "aws" {
-  region = "us-west-1"
+  region = "us-east-1"
 }
 
 # This resource block creates an AWS key pair.
@@ -52,7 +52,7 @@ resource "aws_security_group" "allow_ssh" {
 # The instance uses the Amazon Linux 2 AMI and is of type t3.micro.
 # The previously created key pair and security group are assigned to this instance.
 resource "aws_instance" "example" {
-  ami                    = "ami-0abcd1234efgh5678" # Replace with the actual AMI ID
+  ami                    = "ami-0a887e401f7654935" # Replace with the actual AMI ID
   instance_type          = "t3.micro"
   key_name               = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.allow_ssh.id]
