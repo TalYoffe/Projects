@@ -1,9 +1,9 @@
 # Terraform AWS VPC, Subnets, NAT, EC2 Instances, and Jenkins Configuration
-This Terraform configuration creates an AWS VPC with public and private subnets, a NAT gateway, an Internet gateway, a bastion host in the public subnet, an EC2 instance running Amazon Linux 2 in the private subnet, and a Jenkins server running on Amazon Linux 2 in the public subnet.
+This Terraform configuration creates an AWS VPC with public and private subnets, a NAT gateway, an Internet gateway, a bastion host in the public subnet, an EC2 instance running Amazon Linux 2 in the private subnet including the cloudwatch agent, and a Jenkins server running on Amazon Linux 2 in the public subnet.
 
 ```hcl
 
-# Provider block specifies to use AWS as the cloud provider.
+# Provider block specifies to use AWS as the cloud provider.  
 # The region is set to us-west-1.
 provider "aws" {
   region = "us-west-1"
@@ -12,11 +12,6 @@ provider "aws" {
 # Create a VPC with a CIDR block of 10.0.0.0/16
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
-}
-
-# Create an Internet Gateway and attach it to the VPC
-resource "aws_internet_gateway" "gw" {
-  vpc_id = aws_vpc.main.id
 }
 
 # Create a public subnet within the VPC
@@ -31,53 +26,22 @@ resource "aws_subnet" "private" {
   cidr_block = "10.0.2.0/24"
 }
 
-# Create an Elastic IP for the NAT gateway
-resource "aws_eip" "nat" {
-  vpc = true
-}
-
-# Create a NAT gateway in the public subnet
-resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public.id
-}
-
-# Create a route table for the private subnet to route traffic through the NAT gateway
-resource "aws_route_table" "private" {
+# Create an Internet Gateway and attach it to the VPC
+resource "aws_internet_gateway" "gw" {
   vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
-  }
 }
 
-# Associate the private subnet with the private route table
-resource "aws_route_table_association" "private" {
-  subnet_id      = aws_subnet.private.id
-  route_table_id = aws_route_table.private.id
-}
-
-# Create a route table for the public subnet to route traffic through the Internet gateway
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.gw.id
-  }
-}
-
-# Associate the public subnet with the public route table
-resource "aws_route_table_association" "public" {
+# Attach the Internet Gateway to the public subnet
+resource "aws_subnet_attachment" "public_igw_attachment" {
   subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
+  vpc_id         = aws_vpc.main.id
+  internet_gateway_id = aws_internet_gateway.gw.id
 }
 
-# Create a key pair for SSH access
-resource "aws_key_pair" "deployer" {
-  key_name   = "deployer_key"
-  public_key = file("~/.ssh/id_rsa.pub") # Replace with your public key file path
+# Create a key pair for SSH access to the bastion host
+resource "aws_key_pair" "bastion_key" {
+  key_name   = "bastion_key"
+  public_key = file("~/.ssh/bastion_key.pub") # Replace with the path to your bastion key public key file
 }
 
 # Create a security group for the bastion host to allow SSH from anywhere
@@ -101,9 +65,15 @@ resource "aws_security_group" "bastion" {
   }
 }
 
-# Create a security group for the Jenkins server to allow SSH inbound from the bastion host
-resource "aws_security_group" "jenkins" {
-  name        = "jenkins"
+# Create a key pair for SSH access to the private EC2 instance
+resource "aws_key_pair" "private_instance_key" {
+  key_name   = "private_instance_key"
+  public_key = file("~/.ssh/private_instance_key.pub") # Replace with the path to your private instance key public key file
+}
+
+# Create a security group for the private EC2 instance to allow SSH from the bastion host
+resource "aws_security_group" "private_instance" {
+  name        = "private-instance"
   description = "Allow SSH inbound from the bastion host"
   vpc_id      = aws_vpc.main.id
 
@@ -113,20 +83,13 @@ resource "aws_security_group" "jenkins" {
     protocol    = "tcp"
     security_groups = [aws_security_group.bastion.id]
   }
-
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
 # Create the bastion host in the public subnet
 resource "aws_instance" "bastion" {
   ami           = "ami-01c94064639c71719" # Amazon Linux 2 AMI (HVM), SSD Volume Type
   instance_type = "t3.micro"
-  key_name      = aws_key_pair.deployer.key_name
+  key_name      = aws_key_pair.bastion_key.key_name
   subnet_id     = aws_subnet.public.id
 
   vpc_security_group_ids = [
@@ -138,33 +101,52 @@ resource "aws_instance" "bastion" {
   }
 }
 
-# Create the Jenkins server in the public subnet
-resource "aws_instance" "jenkins" {
+# Create the private EC2 instance in the private subnet
+resource "aws_instance" "private_instance" {
   ami           = "ami-01c94064639c71719" # Amazon Linux 2 AMI (HVM), SSD Volume Type
   instance_type = "t3.micro"
-  key_name      = aws_key_pair.deployer.key_name
-  subnet_id     = aws_subnet.public.id
+  key_name      = aws_key_pair.private_instance_key.key_name
+  subnet_id     = aws_subnet.private.id
 
   vpc_security_group_ids = [
-    aws_security_group.jenkins.id,
+    aws_security_group.private_instance.id,
   ]
 
-  # User data to install Jenkins
+  # User data to install CloudWatch agent
   user_data = <<-EOF
                 #!/bin/bash
                 sudo yum update -y
-                sudo yum install -y java-1.8.0
-                sudo yum remove -y java-1.7.0-openjdk
-                sudo wget -O /etc/yum.repos.d/jenkins.repo http://pkg.jenkins-ci.org/redhat/jenkins.repo
-                sudo rpm --import https://jenkins-ci.org/redhat/jenkins-ci.org.key
-                sudo yum install -y jenkins
-                sudo service jenkins start
-                sudo chkconfig jenkins on
+                sudo yum install -y awslogs
+
+                # Configure CloudWatch agent
+                sudo tee /etc/awslogs/awslogs.conf <<EOF_CONF
+[/var/log/messages]
+datetime_format = %b %d %H:%M:%S
+file = /var/log/messages
+buffer_duration = 5000
+log_stream_name = {instance_id}/var/log/messages
+initial_position = start_of_file
+log_group_name = MyLogGroup
+
+[/var/log/secure]
+datetime_format = %b %d %H:%M:%S
+file = /var/log/secure
+buffer_duration = 5000
+log_stream_name = {instance_id}/var/log/secure
+initial_position = start_of_file
+log_group_name = MyLogGroup
+EOF_CONF
+
+                # Start CloudWatch agent
+                sudo service awslogsd start
+                sudo chkconfig awslogsd on
+
+                # Start your application or services here
               EOF
 
   tags = {
-    Name = "JenkinsServer"
+    Name = "PrivateInstance"
   }
 }
 
-This Terraform code creates a VPC with public and private subnets, deploys a NAT gateway, an Internet gateway, a bastion host in the public subnet, and a Jenkins server in the public subnet. The Jenkins server is accessible via SSH from the bastion host.
+
